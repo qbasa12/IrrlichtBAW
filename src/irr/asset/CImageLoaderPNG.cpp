@@ -3,6 +3,9 @@
 // For conditions of distribution and use, see copyright notice in irrlicht.h
 
 #include "CImageLoaderPNG.h"
+#include <iostream>   
+#include <string>  
+#include <string.h> 
 
 #ifdef _IRR_COMPILE_WITH_PNG_LOADER_
 
@@ -18,6 +21,7 @@
 #include "irr/asset/CImageData.h"
 #include "CReadFile.h"
 #include "os.h"
+
 
 namespace irr
 {
@@ -189,10 +193,19 @@ asset::IAsset* CImageLoaderPng::loadAsset(io::IReadFile* _file, const asset::IAs
 	else
 	{
 		double image_gamma;
-		if (png_get_gAMA(png_ptr, info_ptr, &image_gamma))
+
+		if (png_get_gAMA(png_ptr, info_ptr, &image_gamma)) {
+
+		
 			png_set_gamma(png_ptr, screen_gamma, image_gamma);
-		else
+		}
+
+		else {
+			
+			os::Printer::log(std::to_wstring(image_gamma), ELL_DEBUG);
+	
 			png_set_gamma(png_ptr, screen_gamma, 0.45455);
+		}
 	}
 
 	// Update the changes in between, as we need to get the new color type
@@ -240,9 +253,13 @@ asset::IAsset* CImageLoaderPng::loadAsset(io::IReadFile* _file, const asset::IAs
 
 	// Fill array of pointers to rows in image data
 	uint8_t* data = reinterpret_cast<uint8_t*>(image->getData());
+	;
 	for (uint32_t i=0; i<Height; ++i)
 	{
 		RowPointers[i]=data;
+		
+		os::Printer::log(std::to_wstring(*data), ELL_DEBUG);
+			
 		data += image->getPitchIncludingAlignment();
 	}
 
