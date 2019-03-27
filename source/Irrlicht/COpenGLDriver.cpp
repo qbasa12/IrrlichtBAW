@@ -983,13 +983,13 @@ bool COpenGLDriver::genericDriverInit()
 
 	// Reset The Current Viewport
 	glViewport(0, 0, Params.WindowSize.Width, Params.WindowSize.Height);
-/*
+
 	Params.HandleSRGB &= ((FeatureAvailable[IRR_ARB_framebuffer_sRGB] || FeatureAvailable[IRR_EXT_framebuffer_sRGB]) &&
 		FeatureAvailable[IRR_EXT_texture_sRGB]);
 
 	if (Params.HandleSRGB)
 		glEnable(GL_FRAMEBUFFER_SRGB);
-*/
+
     glDisable(GL_DITHER);
     glDisable(GL_MULTISAMPLE);
     glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
@@ -3321,4 +3321,6 @@ IVideoDriver* createOpenGLDriver(const SIrrlichtCreationParameters& params,
 
 } // end namespace
 } // end namespace
+
+
 
