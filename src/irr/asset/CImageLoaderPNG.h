@@ -2,68 +2,32 @@
 // This file is part of the "Irrlicht Engine".
 // For conditions of distribution and use, see copyright notice in irrlicht.h
 
-#include "CImageWriterPNG.h"
+#include "CImageWriterTGA.h"
 
-#ifdef _IRR_COMPILE_WITH_PNG_WRITER_
+#ifdef _IRR_COMPILE_WITH_TGA_WRITER_
 
-#include "CImageLoaderPNG.h"
-#include "CColorConverter.h"
+#include "CImageLoaderTGA.h"
 #include "IWriteFile.h"
-#include "os.h" // for logging
+#include "CColorConverter.h"
 #include "irr/asset/ICPUTexture.h"
-
-#ifdef _IRR_COMPILE_WITH_LIBPNG_
-#ifndef _IRR_USE_NON_SYSTEM_LIB_PNG_
-	#include <png.h> // use system lib png
-#else // _IRR_USE_NON_SYSTEM_LIB_PNG_
-	#include "libpng/png.h" // use irrlicht included lib png
-#endif // _IRR_USE_NON_SYSTEM_LIB_PNG_
-#endif // _IRR_COMPILE_WITH_LIBPNG_
 
 namespace irr
 {
 namespace asset
 {
 
-#ifdef _IRR_COMPILE_WITH_LIBPNG_
-// PNG function for error handling
-static void png_cpexcept_error(png_structp png_ptr, png_const_charp msg)
-{
-	os::Printer::log("PNG fatal error", msg, ELL_ERROR);
-	longjmp(png_jmpbuf(png_ptr), 1);
-}
-
-// PNG function for warning handling
-static void png_cpexcept_warning(png_structp png_ptr, png_const_charp msg)
-{
-	os::Printer::log("PNG warning", msg, ELL_WARNING);
-}
-
-// PNG function for file writing
-void PNGAPI user_write_data_fcn(png_structp png_ptr, png_bytep data, png_size_t length)
-{
-	png_size_t check;
-
-	io::IWriteFile* file=(io::IWriteFile*)png_get_io_ptr(png_ptr);
-	check=(png_size_t) file->write((const void*)data,(uint32_t)length);
-
-	if (check != length)
-		png_error(png_ptr, "Write Error");
-}
-#endif // _IRR_COMPILE_WITH_LIBPNG_
-
-CImageWriterPNG::CImageWriterPNG()
+CImageWriterTGA::CImageWriterTGA()
 {
 #ifdef _DEBUG
-	setDebugName("CImageWriterPNG");
+	setDebugName("CImageWriterTGA");
 #endif
 }
 
-bool CImageWriterPNG::writeAsset(io::IWriteFile* _file, const SAssetWriteParams& _params, IAssetWriterOverride* _override)
+bool CImageWriterTGA::writeAsset(io::IWriteFile* _file, const SAssetWriteParams& _params, IAssetWriterOverride* _override)
 {
     if (!_override)
         getDefaultOverride(_override);
-#ifdef _IRR_COMPILE_WITH_LIBPNG_
+
     SAssetWriteContext ctx{_params, _file};
 
     const asset::CImageData* image =
@@ -74,149 +38,115 @@ bool CImageWriterPNG::writeAsset(io::IWriteFile* _file, const SAssetWriteParams&
 #   endif
     assert(image);
 
-    io::IWriteFile* file = _override->getOutputFile(_file, ctx, {image, 0u});
+    io::IWriteFile* file = _override->getOutputFile(_file, ctx, { image, 0u });
 
-	if (!file || !image)
-		return false;
+	STGAHeader imageHeader;
+	imageHeader.IdLength = 0;
+	imageHeader.ColorMapType = 0;
+	imageHeader.ImageType = 2;
+	imageHeader.FirstEntryIndex[0] = 0;
+	imageHeader.FirstEntryIndex[1] = 0;
+	imageHeader.ColorMapLength = 0;
+	imageHeader.ColorMapEntrySize = 0;
+	imageHeader.XOrigin[0] = 0;
+	imageHeader.XOrigin[1] = 0;
+	imageHeader.YOrigin[0] = 0;
+	imageHeader.YOrigin[1] = 0;
+	imageHeader.ImageWidth = image->getSize().X;
+	imageHeader.ImageHeight = image->getSize().Y;
 
-	// Allocate the png write struct
-	png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING,
-		NULL, (png_error_ptr)png_cpexcept_error, (png_error_ptr)png_cpexcept_warning);
-	if (!png_ptr)
-	{
-		os::Printer::log("PNGWriter: Internal PNG create write struct failure\n", file->getFileName().c_str(), ELL_ERROR);
-		return false;
-	}
+	// top left of image is the top. the image loader needs to
+	// be fixed to only swap/flip
+	imageHeader.ImageDescriptor = (1 << 5);
 
-	// Allocate the png info struct
-	png_infop info_ptr = png_create_info_struct(png_ptr);
-	if (!info_ptr)
-	{
-		os::Printer::log("PNGWriter: Internal PNG create info struct failure\n", file->getFileName().c_str(), ELL_ERROR);
-		png_destroy_write_struct(&png_ptr, NULL);
-		return false;
-	}
-
-	// for proper error handling
-	if (setjmp(png_jmpbuf(png_ptr)))
-	{
-		png_destroy_write_struct(&png_ptr, &info_ptr);
-		return false;
-	}
-
-	png_set_write_fn(png_ptr, file, user_write_data_fcn, NULL);
-
-	// Set info
+   // chances are good we'll need to swizzle data, so i'm going
+	// to convert and write one scan line at a time. it's also
+	// a bit cleaner this way
+	void (*CColorConverter_convertFORMATtoFORMAT)(const void*, int32_t, void*) = 0;
 	switch(image->getColorFormat())
 	{
-		case asset::EF_B8G8R8A8_UNORM:
-		case asset::EF_A1R5G5B5_UNORM_PACK16:
-			png_set_IHDR(png_ptr, info_ptr,
-				image->getSize().X, image->getSize().Y,
-				8, PNG_COLOR_TYPE_RGB_ALPHA, PNG_INTERLACE_NONE,
-				PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-		break;
-		default:
-			png_set_IHDR(png_ptr, info_ptr,
-				image->getSize().X, image->getSize().Y,
-				8, PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE,
-				PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
-	}
-
-	int32_t lineWidth = image->getSize().X;
-	switch(image->getColorFormat())
-	{
-	case asset::EF_R8G8B8_UNORM:
-	case asset::EF_B5G6R5_UNORM_PACK16:
-		lineWidth*=3;
-		break;
 	case asset::EF_B8G8R8A8_UNORM:
-	case asset::EF_A1R5G5B5_UNORM_PACK16:
-		lineWidth*=4;
-		break;
-	// TODO: Error handling in case of unsupported color format
-	default:
-		break;
-	}
-	uint8_t* tmpImage = new uint8_t[image->getSize().Y*lineWidth];
-	if (!tmpImage)
-	{
-		os::Printer::log("PNGWriter: Internal PNG create image failure\n", file->getFileName().c_str(), ELL_ERROR);
-		png_destroy_write_struct(&png_ptr, &info_ptr);
-		return false;
-	}
-
-	uint8_t* data = (uint8_t*)image->getData();
-	switch(image->getColorFormat())
-	{
-	case asset::EF_R8G8B8_UNORM:
-        video::CColorConverter::convert_R8G8B8toR8G8B8(data,image->getSize().Y*image->getSize().X,tmpImage);
-		break;
-	case asset::EF_B8G8R8A8_UNORM:
-        video::CColorConverter::convert_A8R8G8B8toA8R8G8B8(data,image->getSize().Y*image->getSize().X,tmpImage);
-		break;
-	case asset::EF_B5G6R5_UNORM_PACK16:
-        video::CColorConverter::convert_R5G6B5toR8G8B8(data,image->getSize().Y*image->getSize().X,tmpImage);
+		CColorConverter_convertFORMATtoFORMAT
+			= video::CColorConverter::convert_A8R8G8B8toA8R8G8B8;
+		imageHeader.PixelDepth = 32;
+		imageHeader.ImageDescriptor |= 8;
 		break;
 	case asset::EF_A1R5G5B5_UNORM_PACK16:
-        video::CColorConverter::convert_A1R5G5B5toA8R8G8B8(data,image->getSize().Y*image->getSize().X,tmpImage);
+		CColorConverter_convertFORMATtoFORMAT
+			= video::CColorConverter::convert_A1R5G5B5toA1R5G5B5;
+		imageHeader.PixelDepth = 16;
+		imageHeader.ImageDescriptor |= 1;
+		break;
+	case asset::EF_B5G6R5_UNORM_PACK16:
+		CColorConverter_convertFORMATtoFORMAT
+			= video::CColorConverter::convert_R5G6B5toA1R5G5B5;
+		imageHeader.PixelDepth = 16;
+		imageHeader.ImageDescriptor |= 1;
+		break;
+	case asset::EF_R8G8B8_UNORM:
+		CColorConverter_convertFORMATtoFORMAT
+			= video::CColorConverter::convert_R8G8B8toR8G8B8;
+		imageHeader.PixelDepth = 24;
+		imageHeader.ImageDescriptor |= 0;
 		break;
 #ifndef _DEBUG
-		// TODO: Error handling in case of unsupported color format
 	default:
 		break;
 #endif
 	}
 
-	// Create array of pointers to rows in image data
-
-	//Used to point to image rows
-	uint8_t** RowPointers = new png_bytep[image->getSize().Y];
-	if (!RowPointers)
-	{
-		os::Printer::log("PNGWriter: Internal PNG create row pointers failure\n", file->getFileName().c_str(), ELL_ERROR);
-		png_destroy_write_struct(&png_ptr, &info_ptr);
-		delete [] tmpImage;
+	// couldn't find a color converter
+	if (!CColorConverter_convertFORMATtoFORMAT)
 		return false;
-	}
 
-	data=tmpImage;
-	// Fill array of pointers to rows in image data
-	for (uint32_t i=0; i<image->getSize().Y; ++i)
-	{
-		RowPointers[i]=data;
-		data += lineWidth;
-	}
-	// for proper error handling
-	if (setjmp(png_jmpbuf(png_ptr)))
-	{
-		png_destroy_write_struct(&png_ptr, &info_ptr);
-		delete [] RowPointers;
-		delete [] tmpImage;
+	if (file->write(&imageHeader, sizeof(imageHeader)) != sizeof(imageHeader))
 		return false;
-	}
 
-	png_set_rows(png_ptr, info_ptr, RowPointers);
+	uint8_t* scan_lines = (uint8_t*)image->getData();
+	if (!scan_lines)
+		return false;
 
-	if (image->getColorFormat()==asset::EF_B8G8R8A8_UNORM || image->getColorFormat()==asset::EF_A1R5G5B5_UNORM_PACK16)
-		png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_BGR, NULL);
-	else
+	// size of one pixel in bits
+	uint32_t pixel_size_bits = image->getBitsPerPixel();
+
+	// length of one row of the source image in bytes
+	uint32_t row_stride = (pixel_size_bits * imageHeader.ImageWidth)/8;
+
+	// length of one output row in bytes
+	int32_t row_size = ((imageHeader.PixelDepth / 8) * imageHeader.ImageWidth);
+
+	// allocate a row do translate data into
+	uint8_t* row_pointer = new uint8_t[row_size];
+
+	uint32_t y;
+	for (y = 0; y < imageHeader.ImageHeight; ++y)
 	{
-		png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
+		// source, length [pixels], destination
+		if (image->getColorFormat()==asset::EF_R8G8B8_UNORM)
+            video::CColorConverter::convert24BitTo24Bit(&scan_lines[y * row_stride], row_pointer, imageHeader.ImageWidth, 1, 0, 0, true);
+		else
+			CColorConverter_convertFORMATtoFORMAT(&scan_lines[y * row_stride], imageHeader.ImageWidth, row_pointer);
+		if (file->write(row_pointer, row_size) != row_size)
+			break;
 	}
 
-	delete [] RowPointers;
-	delete [] tmpImage;
-	png_destroy_write_struct(&png_ptr, &info_ptr);
-	return true;
-#else
-	return false;
-#endif
+	delete [] row_pointer;
+
+	STGAFooter imageFooter;
+	imageFooter.ExtensionOffset = 0;
+	imageFooter.DeveloperOffset = 0;
+	strncpy(imageFooter.Signature, "TRUEVISION-XFILE.", 18);
+
+	if (file->write(&imageFooter, sizeof(imageFooter)) < (int32_t)sizeof(imageFooter))
+		return false;
+
+	return imageHeader.ImageHeight <= y;
 }
 
 } // namespace video
 } // namespace irr
 
 #endif
+
 
 
