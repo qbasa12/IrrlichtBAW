@@ -2,232 +2,151 @@
 // This file is part of the "Irrlicht Engine".
 // For conditions of distribution and use, see copyright notice in irrlicht.h
 
+#include "CImageWriterTGA.h"
+
+#ifdef _IRR_COMPILE_WITH_TGA_WRITER_
+
 #include "CImageLoaderTGA.h"
-
-#ifdef _IRR_COMPILE_WITH_TGA_LOADER_
-
-#include "IReadFile.h"
-#include "os.h"
+#include "IWriteFile.h"
 #include "CColorConverter.h"
-#include "irr/asset/CImageData.h"
 #include "irr/asset/ICPUTexture.h"
-
 
 namespace irr
 {
 namespace asset
 {
 
-//! loads a compressed tga.
-uint8_t *CImageLoaderTGA::loadCompressedImage(io::IReadFile *file, const STGAHeader& header) const
+CImageWriterTGA::CImageWriterTGA()
 {
-	// This was written and sent in by Jon Pry, thank you very much!
-	// I only changed the formatting a little bit.
-
-	int32_t bytesPerPixel = header.PixelDepth/8;
-	int32_t imageSize =  header.ImageHeight * header.ImageWidth * bytesPerPixel;
-	uint8_t* data = new uint8_t[imageSize];
-	int32_t currentByte = 0;
-
-	while(currentByte < imageSize)
-	{
-		uint8_t chunkheader = 0;
-		file->read(&chunkheader, sizeof(uint8_t)); // Read The Chunk's Header
-
-		if(chunkheader < 128) // If The Chunk Is A 'RAW' Chunk
-		{
-			chunkheader++; // Add 1 To The Value To Get Total Number Of Raw Pixels
-
-			file->read(&data[currentByte], bytesPerPixel * chunkheader);
-			currentByte += bytesPerPixel * chunkheader;
-		}
-		else
-		{
-			// thnx to neojzs for some fixes with this code
-
-			// If It's An RLE Header
-			chunkheader -= 127; // Subtract 127 To Get Rid Of The ID Bit
-
-			int32_t dataOffset = currentByte;
-			file->read(&data[dataOffset], bytesPerPixel);
-
-			currentByte += bytesPerPixel;
-
-			for(int32_t counter = 1; counter < chunkheader; counter++)
-			{
-				for(int32_t elementCounter=0; elementCounter < bytesPerPixel; elementCounter++)
-					data[currentByte + elementCounter] = data[dataOffset + elementCounter];
-
-				currentByte += bytesPerPixel;
-			}
-		}
-	}
-
-	return data;
+#ifdef _DEBUG
+	setDebugName("CImageWriterTGA");
+#endif
 }
 
-
-
-//! returns true if the file maybe is able to be loaded by this class
-bool CImageLoaderTGA::isALoadableFileFormat(io::IReadFile* _file) const
+bool CImageWriterTGA::writeAsset(io::IWriteFile* _file, const SAssetWriteParams& _params, IAssetWriterOverride* _override)
 {
-	if (!_file)
+    if (!_override)
+        getDefaultOverride(_override);
+
+    SAssetWriteContext ctx{_params, _file};
+
+    const asset::CImageData* image =
+#   ifndef _DEBUG
+        static_cast<const asset::CImageData*>(_params.rootAsset);
+#   else
+        dynamic_cast<const asset::CImageData*>(_params.rootAsset);
+#   endif
+    assert(image);
+
+    io::IWriteFile* file = _override->getOutputFile(_file, ctx, { image, 0u });
+
+	STGAHeader imageHeader;
+	imageHeader.IdLength = 0;
+	imageHeader.ColorMapType = 0;
+	imageHeader.ImageType = 2;
+	imageHeader.FirstEntryIndex[0] = 0;
+	imageHeader.FirstEntryIndex[1] = 0;
+	imageHeader.ColorMapLength = 0;
+	imageHeader.ColorMapEntrySize = 0;
+	imageHeader.XOrigin[0] = 0;
+	imageHeader.XOrigin[1] = 0;
+	imageHeader.YOrigin[0] = 0;
+	imageHeader.YOrigin[1] = 0;
+	imageHeader.ImageWidth = image->getSize().X;
+	imageHeader.ImageHeight = image->getSize().Y;
+
+	// top left of image is the top. the image loader needs to
+	// be fixed to only swap/flip
+	imageHeader.ImageDescriptor = (1 << 5);
+
+   // chances are good we'll need to swizzle data, so i'm going
+	// to convert and write one scan line at a time. it's also
+	// a bit cleaner this way
+	void (*CColorConverter_convertFORMATtoFORMAT)(const void*, int32_t, void*) = 0;
+	switch(image->getColorFormat())
+	{
+	case asset::EF_B8G8R8A8_UNORM:
+		CColorConverter_convertFORMATtoFORMAT
+			= video::CColorConverter::convert_A8R8G8B8toA8R8G8B8;
+		imageHeader.PixelDepth = 32;
+		imageHeader.ImageDescriptor |= 8;
+		break;
+	case asset::EF_A1R5G5B5_UNORM_PACK16:
+		CColorConverter_convertFORMATtoFORMAT
+			= video::CColorConverter::convert_A1R5G5B5toA1R5G5B5;
+		imageHeader.PixelDepth = 16;
+		imageHeader.ImageDescriptor |= 1;
+		break;
+	case asset::EF_B5G6R5_UNORM_PACK16:
+		CColorConverter_convertFORMATtoFORMAT
+			= video::CColorConverter::convert_R5G6B5toA1R5G5B5;
+		imageHeader.PixelDepth = 16;
+		imageHeader.ImageDescriptor |= 1;
+		break;
+	case asset::EF_R8G8B8_UNORM:
+		CColorConverter_convertFORMATtoFORMAT
+			= video::CColorConverter::convert_R8G8B8toR8G8B8;
+		imageHeader.PixelDepth = 24;
+		imageHeader.ImageDescriptor |= 0;
+		break;
+#ifndef _DEBUG
+	default:
+		break;
+#endif
+	}
+
+	// couldn't find a color converter
+	if (!CColorConverter_convertFORMATtoFORMAT)
 		return false;
 
-    const size_t prevPos = _file->getPos();
+	if (file->write(&imageHeader, sizeof(imageHeader)) != sizeof(imageHeader))
+		return false;
 
-	STGAFooter footer;
-	memset(&footer, 0, sizeof(STGAFooter));
-	_file->seek(_file->getSize()-sizeof(STGAFooter));
-	_file->read(&footer, sizeof(STGAFooter));
-    _file->seek(prevPos);
+	uint8_t* scan_lines = (uint8_t*)image->getData();
+	if (!scan_lines)
+		return false;
 
-	if (strcmp(footer.Signature,"TRUEVISION-X_file.")) // very old tgas are refused.
+	// size of one pixel in bits
+	uint32_t pixel_size_bits = image->getBitsPerPixel();
+
+	// length of one row of the source image in bytes
+	uint32_t row_stride = (pixel_size_bits * imageHeader.ImageWidth)/8;
+
+	// length of one output row in bytes
+	int32_t row_size = ((imageHeader.PixelDepth / 8) * imageHeader.ImageWidth);
+
+	// allocate a row do translate data into
+	uint8_t* row_pointer = new uint8_t[row_size];
+
+	uint32_t y;
+	for (y = 0; y < imageHeader.ImageHeight; ++y)
 	{
-#ifdef _DEBUG
-		os::Printer::log("Unsupported, very old TGA", _file->getFileName().c_str(), ELL_ERROR);
-#endif // _DEBUG
-	    return false;
+		// source, length [pixels], destination
+		if (image->getColorFormat()==asset::EF_R8G8B8_UNORM)
+            video::CColorConverter::convert24BitTo24Bit(&scan_lines[y * row_stride], row_pointer, imageHeader.ImageWidth, 1, 0, 0, true);
+		else
+			CColorConverter_convertFORMATtoFORMAT(&scan_lines[y * row_stride], imageHeader.ImageWidth, row_pointer);
+		if (file->write(row_pointer, row_size) != row_size)
+			break;
 	}
-    else
-        return true;
+
+	delete [] row_pointer;
+
+	STGAFooter imageFooter;
+	imageFooter.ExtensionOffset = 0;
+	imageFooter.DeveloperOffset = 0;
+	strncpy(imageFooter.Signature, "TRUEVISION-XFILE.", 18);
+
+	if (file->write(&imageFooter, sizeof(imageFooter)) < (int32_t)sizeof(imageFooter))
+		return false;
+
+	return imageHeader.ImageHeight <= y;
 }
 
-
-
-//! creates a surface from the file
-asset::IAsset* CImageLoaderTGA::loadAsset(io::IReadFile* _file, const asset::IAssetLoader::SAssetLoadParams& _params, asset::IAssetLoader::IAssetLoaderOverride* _override, uint32_t _hierarchyLevel)
-{
-	STGAHeader header;
-	uint32_t *palette = 0;
-
-	_file->read(&header, sizeof(STGAHeader));
-
-	// skip image identification field
-	if (header.IdLength)
-		_file->seek(header.IdLength, true);
-
-	if (header.ColorMapType)
-	{
-		// create 32 bit palette
-		palette = new uint32_t[ header.ColorMapLength];
-
-		// read color map
-		uint8_t * colorMap = new uint8_t[header.ColorMapEntrySize/8 * header.ColorMapLength];
-		_file->read(colorMap,header.ColorMapEntrySize/8 * header.ColorMapLength);
-
-		// convert to 32-bit palette
-		switch ( header.ColorMapEntrySize )
-		{
-			case 16:
-                video::CColorConverter::convert_A1R5G5B5toA8R8G8B8(colorMap, header.ColorMapLength, palette);
-				break;
-			case 24:
-                video::CColorConverter::convert_B8G8R8toA8R8G8B8(colorMap, header.ColorMapLength, palette);
-				break;
-			case 32:
-				video::CColorConverter::convert_B8G8R8A8toA8R8G8B8(colorMap, header.ColorMapLength, palette);
-				break;
-		}
-		delete [] colorMap;
-	}
-
-	core::vector<asset::CImageData*> images;
-	// read image
-	uint8_t* data = 0;
-
-	if (	header.ImageType == 1 || // Uncompressed, color-mapped images.
-			header.ImageType == 2 || // Uncompressed, RGB images
-			header.ImageType == 3 // Uncompressed, black and white images
-		)
-	{
-		const int32_t imageSize = header.ImageHeight * header.ImageWidth * header.PixelDepth/8;
-		data = new uint8_t[imageSize];
-	  	_file->read(data, imageSize);
-	}
-	else
-	if(header.ImageType == 10)
-	{
-		// Runlength encoded RGB images
-		data = loadCompressedImage(_file, header);
-	}
-	else
-	{
-		os::Printer::log("Unsupported TGA _file type", _file->getFileName().c_str(), ELL_ERROR);
-
-		if (palette)
-            delete [] palette;
-
-		return nullptr;
-	}
-
-    asset::CImageData* image = 0;
-
-	uint32_t nullOffset[3] = {0,0,0};
-	uint32_t imageSize[3] = {header.ImageWidth,header.ImageHeight,1};
-
-	switch(header.PixelDepth)
-	{
-	case 8:
-		{
-			if (header.ImageType==3) // grey image
-			{
-				image = new asset::CImageData(NULL,nullOffset,imageSize,0,asset::EF_R8G8B8_UNORM);
-				if (image)
-                    video::CColorConverter::convert8BitTo24Bit((uint8_t*)data,
-						(uint8_t*)image->getData(),
-						header.ImageWidth,header.ImageHeight,
-						0, 0, (header.ImageDescriptor&0x20)==0);
-			}
-			else
-			{
-				image = new asset::CImageData(NULL,nullOffset,imageSize,0, asset::EF_A1R5G5B5_UNORM_PACK16);
-				if (image)
-                    video::CColorConverter::convert8BitTo16Bit((uint8_t*)data,
-						(int16_t*)image->getData(),
-						header.ImageWidth,header.ImageHeight,
-						(int32_t*) palette, 0,
-						(header.ImageDescriptor&0x20)==0);
-			}
-		}
-		break;
-	case 16:
-		image = new asset::CImageData(NULL,nullOffset,imageSize,0, asset::EF_A1R5G5B5_UNORM_PACK16);
-		if (image)
-            video::CColorConverter::convert16BitTo16Bit((int16_t*)data,
-				(int16_t*)image->getData(), header.ImageWidth,	header.ImageHeight, 0, (header.ImageDescriptor&0x20)==0);
-		break;
-	case 24:
-			image = new asset::CImageData(NULL,nullOffset,imageSize,0,asset::EF_R8G8B8_UNORM);
-			if (image)
-                video::CColorConverter::convert24BitTo24Bit(
-					(uint8_t*)data, (uint8_t*)image->getData(), header.ImageWidth, header.ImageHeight, 0, (header.ImageDescriptor&0x20)==0, true);
-		break;
-	case 32:
-			image = new asset::CImageData(NULL,nullOffset,imageSize,0,asset::EF_B8G8R8A8_UNORM);
-			if (image)
-                video::CColorConverter::convert32BitTo32Bit((int32_t*)data,
-					(int32_t*)image->getData(), header.ImageWidth, header.ImageHeight, 0, (header.ImageDescriptor&0x20)==0);
-		break;
-	default:
-		os::Printer::log("Unsupported TGA format", _file->getFileName().c_str(), ELL_ERROR);
-		break;
-	}
-	images.push_back(image);
-
-
-	delete [] data;
-	delete [] palette;
-
-    asset::ICPUTexture* tex = asset::ICPUTexture::create(images);
-    for (auto img : images)
-        img->drop();
-    return tex;
-}
-
-
-} // end namespace video
-} // end namespace irr
+} // namespace video
+} // namespace irr
 
 #endif
+
+
 
