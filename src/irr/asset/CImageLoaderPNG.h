@@ -148,5 +148,3 @@ bool CImageWriterTGA::writeAsset(io::IWriteFile* _file, const SAssetWriteParams&
 
 #endif
 
-
-
