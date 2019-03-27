@@ -2,284 +2,285 @@
 // This file is part of the "Irrlicht Engine".
 // For conditions of distribution and use, see copyright notice in irrlicht.h
 
-#include "CImageLoaderJPG.h"
+#include "CImageLoaderPNG.h"
+#include <iostream>   
+#include <string>  
+#include <string.h> 
 
-#ifdef _IRR_COMPILE_WITH_JPG_LOADER_
+#ifdef _IRR_COMPILE_WITH_PNG_LOADER_
 
-#include "IReadFile.h"
-#include "CImage.h"
-#include "os.h"
+#ifdef _IRR_COMPILE_WITH_LIBPNG_
+	#ifndef _IRR_USE_NON_SYSTEM_LIB_PNG_
+	#include <png.h> // use system lib png
+	#else // _IRR_USE_NON_SYSTEM_LIB_PNG_
+	#include "libpng/png.h" // use irrlicht included lib png
+	#endif // _IRR_USE_NON_SYSTEM_LIB_PNG_
+#endif // _IRR_COMPILE_WITH_LIBPNG_
+
 #include "irr/asset/ICPUTexture.h"
-#include <string>
+#include "irr/asset/CImageData.h"
+#include "CReadFile.h"
+#include "os.h"
+
 
 namespace irr
 {
 namespace asset
 {
 
-//! constructor
-CImageLoaderJPG::CImageLoaderJPG()
+#ifdef _IRR_COMPILE_WITH_LIBPNG_
+// PNG function for error handling
+static void png_cpexcept_error(png_structp png_ptr, png_const_charp msg)
 {
-	#ifdef _DEBUG
-	setDebugName("CImageLoaderJPG");
-	#endif
+	os::Printer::log("PNG fatal error", msg, ELL_ERROR);
+	longjmp(png_jmpbuf(png_ptr), 1);
 }
 
-
-
-//! destructor
-CImageLoaderJPG::~CImageLoaderJPG()
+// PNG function for warning handling
+static void png_cpexcept_warn(png_structp png_ptr, png_const_charp msg)
 {
+	os::Printer::log("PNG warning", msg, ELL_WARNING);
 }
 
-
-#ifdef _IRR_COMPILE_WITH_LIBJPEG_
-
-    // struct for handling jpeg errors
-    struct irr_jpeg_error_mgr
-    {
-        // public jpeg error fields
-        struct jpeg_error_mgr pub;
-
-        // for longjmp, to return to caller on a fatal error
-        jmp_buf setjmp_buffer;
-    };
-
-void CImageLoaderJPG::init_source (j_decompress_ptr cinfo)
+// PNG function for file reading
+void PNGAPI user_read_data_fcn(png_structp png_ptr, png_bytep data, png_size_t length)
 {
-	// DO NOTHING
+	png_size_t check;
+
+	// changed by zola {
+	io::IReadFile* file=(io::IReadFile*)png_get_io_ptr(png_ptr);
+	check=(png_size_t) file->read((void*)data,(uint32_t)length);
+	// }
+
+	if (check != length)
+		png_error(png_ptr, "Read Error");
 }
+#endif // _IRR_COMPILE_WITH_LIBPNG_
 
-
-
-boolean CImageLoaderJPG::fill_input_buffer (j_decompress_ptr cinfo)
-{
-	// DO NOTHING
-	return 1;
-}
-
-
-
-void CImageLoaderJPG::skip_input_data (j_decompress_ptr cinfo, long count)
-{
-	jpeg_source_mgr * src = cinfo->src;
-	if(count > 0)
-	{
-		src->bytes_in_buffer -= count;
-		src->next_input_byte += count;
-	}
-}
-
-
-
-void CImageLoaderJPG::term_source (j_decompress_ptr cinfo)
-{
-	// DO NOTHING
-}
-
-
-void CImageLoaderJPG::error_exit (j_common_ptr cinfo)
-{
-	// unfortunately we need to use a goto rather than throwing an exception
-	// as gcc crashes under linux crashes when using throw from within
-	// extern c code
-
-	// Always display the message
-	(*cinfo->err->output_message) (cinfo);
-
-	// cinfo->err really points to a irr_error_mgr struct
-	irr_jpeg_error_mgr *myerr = (irr_jpeg_error_mgr*) cinfo->err;
-
-	longjmp(myerr->setjmp_buffer, 1);
-}
-
-
-void CImageLoaderJPG::output_message(j_common_ptr cinfo)
-{
-	// display the error message.
-	char temp1[JMSG_LENGTH_MAX];
-	(*cinfo->err->format_message)(cinfo, temp1);
-	std::string errMsg("JPEG FATAL ERROR in ");
-    errMsg += reinterpret_cast<char*>(cinfo->client_data);
-	os::Printer::log(errMsg,temp1, ELL_ERROR);
-}
-#endif // _IRR_COMPILE_WITH_LIBJPEG_
 
 //! returns true if the file maybe is able to be loaded by this class
-bool CImageLoaderJPG::isALoadableFileFormat(io::IReadFile* _file) const
+bool CImageLoaderPng::isALoadableFileFormat(io::IReadFile* _file) const
 {
-	#ifndef _IRR_COMPILE_WITH_LIBJPEG_
-	return false;
-	#else
-
+#ifdef _IRR_COMPILE_WITH_LIBPNG_
 	if (!_file)
 		return false;
 
     const size_t prevPos = _file->getPos();
 
-	int32_t jfif = 0;
-	_file->seek(6);
-	_file->read(&jfif, sizeof(int32_t));
-    _file->seek(prevPos);
-	return (jfif == 0x4a464946 || jfif == 0x4649464a);
+	png_byte buffer[8];
+	// Read the first few bytes of the PNG _file
+    if (_file->read(buffer, 8) != 8)
+    {
+        _file->seek(prevPos);
+        return false;
+    }
 
-	#endif
+    _file->seek(prevPos);
+	// Check if it really is a PNG _file
+	return !png_sig_cmp(buffer, 0, 8);
+#else
+	return false;
+#endif // _IRR_COMPILE_WITH_LIBPNG_
 }
 
-//! creates a surface from the file
-asset::IAsset* CImageLoaderJPG::loadAsset(io::IReadFile* _file, const asset::IAssetLoader::SAssetLoadParams& _params, asset::IAssetLoader::IAssetLoaderOverride* _override, uint32_t _hierarchyLevel)
+
+// load in the image data
+asset::IAsset* CImageLoaderPng::loadAsset(io::IReadFile* _file, const asset::IAssetLoader::SAssetLoadParams& _params, asset::IAssetLoader::IAssetLoaderOverride* _override, uint32_t _hierarchyLevel)
 {
     core::vector<asset::CImageData*> images;
-
-#ifndef _IRR_COMPILE_WITH_LIBJPEG_
-	os::Printer::log("Can't load as not compiled with _IRR_COMPILE_WITH_LIBJPEG_:", _file->getFileName(), ELL_DEBUG);
-#else
+#ifdef _IRR_COMPILE_WITH_LIBPNG_
 	if (!_file)
 		return nullptr;
 
-	const io::path& Filename = _file->getFileName();
+	asset::CImageData* image = 0;
+	//Used to point to image rows
+	uint8_t** RowPointers = 0;
 
-	uint8_t **rowPtr=0;
-	uint8_t* input = new uint8_t[_file->getSize()];
-	_file->read(input, _file->getSize());
-
-	// allocate and initialize JPEG decompression object
-	struct jpeg_decompress_struct cinfo;
-	struct irr_jpeg_error_mgr jerr;
-
-	//We have to set up the error handler first, in case the initialization
-	//step fails.  (Unlikely, but it could happen if you are out of memory.)
-	//This routine fills in the contents of struct jerr, and returns jerr's
-	//address which we place into the link field in cinfo.
-
-	cinfo.err = jpeg_std_error(&jerr.pub);
-	cinfo.err->error_exit = error_exit;
-	cinfo.err->output_message = output_message;
-    cinfo.client_data = const_cast<char*>(Filename.c_str());
-
-	// compatibility fudge:
-	// we need to use setjmp/longjmp for error handling as gcc-linux
-	// crashes when throwing within external c code
-	if (setjmp(jerr.setjmp_buffer))
+	png_byte buffer[8];
+	// Read the first few bytes of the PNG _file
+	if( _file->read(buffer, 8) != 8 )
 	{
-		// If we get here, the JPEG code has signaled an error.
-		// We need to clean up the JPEG object and return.
-
-		jpeg_destroy_decompress(&cinfo);
-
-		delete [] input;
-		// if the row pointer was created, we delete it.
-		if (rowPtr)
-			delete [] rowPtr;
-
-		// return null pointer
+		os::Printer::log("LOAD PNG: can't read _file\n", _file->getFileName().c_str(), ELL_ERROR);
 		return nullptr;
 	}
 
-	// Now we can initialize the JPEG decompression object.
-	jpeg_create_decompress(&cinfo);
-
-	// specify data source
-	jpeg_source_mgr jsrc;
-
-	// Set up data pointer
-	jsrc.bytes_in_buffer = _file->getSize();
-	jsrc.next_input_byte = (JOCTET*)input;
-	cinfo.src = &jsrc;
-
-	jsrc.init_source = init_source;
-	jsrc.fill_input_buffer = fill_input_buffer;
-	jsrc.skip_input_data = skip_input_data;
-	jsrc.resync_to_restart = jpeg_resync_to_restart;
-	jsrc.term_source = term_source;
-
-	// Decodes JPG input from whatever source
-	// Does everything AFTER jpeg_create_decompress
-	// and BEFORE jpeg_destroy_decompress
-	// Caller is responsible for arranging these + setting up cinfo
-
-	// read _file parameters with jpeg_read_header()
-	jpeg_read_header(&cinfo, TRUE);
-
-	bool useCMYK=false;
-	if (cinfo.jpeg_color_space==JCS_CMYK)
+	// Check if it really is a PNG _file
+	if( png_sig_cmp(buffer, 0, 8) )
 	{
-		cinfo.out_color_space=JCS_CMYK;
-		cinfo.out_color_components=4;
-		useCMYK=true;
+		os::Printer::log("LOAD PNG: not really a png\n", _file->getFileName().c_str(), ELL_ERROR);
+		return nullptr;
 	}
+
+	// Allocate the png read struct
+	png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING,
+		NULL, (png_error_ptr)png_cpexcept_error, (png_error_ptr)png_cpexcept_warn);
+	if (!png_ptr)
+	{
+		os::Printer::log("LOAD PNG: Internal PNG create read struct failure\n", _file->getFileName().c_str(), ELL_ERROR);
+		return nullptr;
+	}
+
+	// Allocate the png info struct
+	png_infop info_ptr = png_create_info_struct(png_ptr);
+	if (!info_ptr)
+	{
+		os::Printer::log("LOAD PNG: Internal PNG create info struct failure\n", _file->getFileName().c_str(), ELL_ERROR);
+		png_destroy_read_struct(&png_ptr, NULL, NULL);
+		return nullptr;
+	}
+
+	// for proper error handling
+	if (setjmp(png_jmpbuf(png_ptr)))
+	{
+		png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+		if (RowPointers)
+			delete [] RowPointers;
+		return nullptr;
+	}
+
+	// changed by zola so we don't need to have public FILE pointers
+	png_set_read_fn(png_ptr, _file, user_read_data_fcn);
+
+	png_set_sig_bytes(png_ptr, 8); // Tell png that we read the signature
+
+	png_read_info(png_ptr, info_ptr); // Read the info section of the png _file
+
+	uint32_t imageSize[3] = {1,1,1};
+	uint32_t& Width = imageSize[0];
+	uint32_t& Height = imageSize[1];
+	int32_t BitDepth;
+	int32_t ColorType;
+	{
+		// Use temporary variables to avoid passing casted pointers
+		png_uint_32 w,h;
+		// Extract info
+		png_get_IHDR(png_ptr, info_ptr,
+			&w, &h,
+			&BitDepth, &ColorType, NULL, NULL, NULL);
+		Width=w;
+		Height=h;
+	}
+
+	// Convert palette color to true color
+	if (ColorType==PNG_COLOR_TYPE_PALETTE)
+		png_set_palette_to_rgb(png_ptr);
+
+	// Convert low bit colors to 8 bit colors
+	if (BitDepth < 8)
+	{
+		if (ColorType==PNG_COLOR_TYPE_GRAY || ColorType==PNG_COLOR_TYPE_GRAY_ALPHA)
+			png_set_expand_gray_1_2_4_to_8(png_ptr);
+		else
+			png_set_packing(png_ptr);
+	}
+
+	if (png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS))
+		png_set_tRNS_to_alpha(png_ptr);
+
+	// Convert high bit colors to 8 bit colors
+	if (BitDepth == 16)
+		png_set_strip_16(png_ptr);
+
+	// Convert gray color to true color
+	if (ColorType==PNG_COLOR_TYPE_GRAY || ColorType==PNG_COLOR_TYPE_GRAY_ALPHA)
+		png_set_gray_to_rgb(png_ptr);
+
+	int intent;
+	const double screen_gamma = 2.2;
+
+	if (png_get_sRGB(png_ptr, info_ptr, &intent))
+		png_set_gamma(png_ptr, screen_gamma, 0.45455);
 	else
 	{
-		cinfo.out_color_space=JCS_RGB;
-		cinfo.out_color_components=3;
-	}
-	cinfo.output_gamma=2.2;
-	cinfo.do_fancy_upsampling=FALSE;
+		double image_gamma;
 
-	// Start decompressor
-	jpeg_start_decompress(&cinfo);
+		if (png_get_gAMA(png_ptr, info_ptr, &image_gamma)) {
 
-	// Get image data
-	uint16_t rowspan = cinfo.image_width * cinfo.out_color_components;
-	uint32_t imageSize[3] = {cinfo.image_width,cinfo.image_height,1};
-	uint32_t& width = imageSize[0];
-	uint32_t& height = imageSize[1];
-
-	// Allocate memory for buffer
-	uint8_t* output = reinterpret_cast<uint8_t*>(_IRR_ALIGNED_MALLOC(rowspan * height,_IRR_SIMD_ALIGNMENT));
-
-	// Here we use the library's state variable cinfo.output_scanline as the
-	// loop counter, so that we don't have to keep track ourselves.
-	// Create array of row pointers for lib
-	rowPtr = new uint8_t* [height];
-
-	for( uint32_t i = 0; i < height; i++ )
-		rowPtr[i] = &output[ i * rowspan ];
-
-	uint32_t rowsRead = 0;
-
-	while( cinfo.output_scanline < cinfo.output_height )
-		rowsRead += jpeg_read_scanlines( &cinfo, &rowPtr[rowsRead], cinfo.output_height - rowsRead );
-
-	delete [] rowPtr;
-	// Finish decompression
-
-	jpeg_finish_decompress(&cinfo);
-
-	// Release JPEG decompression object
-	// This is an important step since it will release a good deal of memory.
-	jpeg_destroy_decompress(&cinfo);
-
-	uint32_t nullOffset[3] = {0,0,0};
-	// convert image
-    asset::CImageData* image = 0;
-	if (useCMYK)
-	{
-		image = new asset::CImageData(NULL,nullOffset,imageSize,0,asset::EF_R8G8B8_UNORM);
-		const uint32_t size = 3*width*height;
-		uint8_t* data = (uint8_t*)image->getData();
-		if (data)
-		{
-			for (uint32_t i=0,j=0; i<size; i+=3, j+=4)
-			{
-				// Also works without K, but has more contrast with K multiplied in
-//				data[i+0] = output[j+2];
-//				data[i+1] = output[j+1];
-//				data[i+2] = output[j+0];
-				data[i+0] = (char)(output[j+2]*(output[j+3]/255.f));
-				data[i+1] = (char)(output[j+1]*(output[j+3]/255.f));
-				data[i+2] = (char)(output[j+0]*(output[j+3]/255.f));
-			}
+		
+			png_set_gamma(png_ptr, screen_gamma, image_gamma);
 		}
-		_IRR_ALIGNED_FREE(output);
+
+		else {
+			
+			os::Printer::log(std::to_wstring(image_gamma), ELL_DEBUG);
+	
+			png_set_gamma(png_ptr, screen_gamma, 0.45455);
+		}
 	}
+
+	// Update the changes in between, as we need to get the new color type
+	// for proper processing of the RGBA type
+	png_read_update_info(png_ptr, info_ptr);
+	{
+		// Use temporary variables to avoid passing casted pointers
+		png_uint_32 w,h;
+		// Extract info
+		png_get_IHDR(png_ptr, info_ptr,
+			&w, &h,
+			&BitDepth, &ColorType, NULL, NULL, NULL);
+		Width=w;
+		Height=h;
+	}
+
+	// Convert RGBA to BGRA
+	if (ColorType==PNG_COLOR_TYPE_RGB_ALPHA)
+	{
+		png_set_bgr(png_ptr);
+	}
+
+	// Create the image structure to be filled by png data
+	uint32_t nullOffset[3] = {0,0,0};
+	if (ColorType==PNG_COLOR_TYPE_RGB_ALPHA)
+		image = new asset::CImageData(NULL, nullOffset, imageSize, 0, asset::EF_B8G8R8A8_UNORM);
 	else
-		image = new asset::CImageData(output,nullOffset,imageSize,0,asset::EF_R8G8B8_UNORM,1,true);
+		image = new asset::CImageData(NULL, nullOffset, imageSize, 0, asset::EF_R8G8B8_UNORM);
+	if (!image)
+	{
+		os::Printer::log("LOAD PNG: Internal PNG create image struct failure\n", _file->getFileName().c_str(), ELL_ERROR);
+		png_destroy_read_struct(&png_ptr, NULL, NULL);
+		return nullptr;
+	}
 
-	delete [] input;
+	// Create array of pointers to rows in image data
+	RowPointers = new png_bytep[Height];
+	if (!RowPointers)
+	{
+		os::Printer::log("LOAD PNG: Internal PNG create row pointers failure\n", _file->getFileName().c_str(), ELL_ERROR);
+		png_destroy_read_struct(&png_ptr, NULL, NULL);
+		image->drop();
+		return nullptr;
+	}
 
-    images.push_back(image);
-#endif
+	// Fill array of pointers to rows in image data
+	uint8_t* data = reinterpret_cast<uint8_t*>(image->getData());
+	;
+	for (uint32_t i=0; i<Height; ++i)
+	{
+		RowPointers[i]=data;
+		
+		os::Printer::log(std::to_wstring(*data), ELL_DEBUG);
+			
+		data += image->getPitchIncludingAlignment();
+	}
+
+	// for proper error handling
+	if (setjmp(png_jmpbuf(png_ptr)))
+	{
+		png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+		delete [] RowPointers;
+		image->drop();
+		return nullptr;
+	}
+
+	// Read data using the library function that handles all transformations including interlacing
+	png_read_image(png_ptr, RowPointers);
+
+	png_read_end(png_ptr, NULL);
+	delete [] RowPointers;
+	png_destroy_read_struct(&png_ptr,&info_ptr, 0); // Clean up memory
+
+	images.push_back(image);
+#endif // _IRR_COMPILE_WITH_LIBPNG_
 
     asset::ICPUTexture* tex = asset::ICPUTexture::create(images);
     for (auto img : images)
@@ -287,8 +288,10 @@ asset::IAsset* CImageLoaderJPG::loadAsset(io::IReadFile* _file, const asset::IAs
     return tex;
 }
 
-} // end namespace video
-} // end namespace irr
+
+}// end namespace irr
+}//end namespace video
 
 #endif
+
 
