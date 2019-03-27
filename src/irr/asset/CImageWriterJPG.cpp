@@ -219,3 +219,4 @@ bool CImageWriterJPG::writeAsset(io::IWriteFile* _file, const SAssetWriteParams&
 #undef OUTPUT_BUF_SIZE
 #endif
 
+
