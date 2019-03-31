@@ -1,7 +1,7 @@
 SRGB LOADER
 qbasa
 March 2019
-1 To use build in nodes example u should first
+1 To use built in nodes example u should first
 uncomment these lines from git issue description, than build a library by cmake-gui. first
 line is the path to our root of the irrlitch
 repository branch second is the build folder.
