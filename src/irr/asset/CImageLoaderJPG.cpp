@@ -256,7 +256,7 @@ asset::IAsset* CImageLoaderJPG::loadAsset(io::IReadFile* _file, const asset::IAs
     asset::CImageData* image = 0;
 	if (useCMYK)
 	{
-		image = new asset::CImageData(NULL,nullOffset,imageSize,0,asset::EF_R8G8B8_SRGB);
+		image = new asset::CImageData(NULL,nullOffset,imageSize,0,asset::EF_R8G8B8_UNORM,);
 		const uint32_t size = 3*width*height;
 		uint8_t* data = (uint8_t*)image->getData();
 		if (data)
