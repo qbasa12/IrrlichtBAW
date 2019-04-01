@@ -144,7 +144,7 @@ asset::IAsset* CImageLoaderTGA::loadAsset(io::IReadFile* _file, const asset::IAs
 	    
 		)
 	{
-		const int32_t imageSize = header.ImageHeight * header.PixelDepth/8;
+		const int32_t imageSize = header.ImageHeight * header.ImageWidth *header.PixelDepth/8;
 		data = new uint8_t[imageSize];
 	  	_file->read(data, imageSize);
 	}
