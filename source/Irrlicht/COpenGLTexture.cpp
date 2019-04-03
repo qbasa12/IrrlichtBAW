@@ -310,6 +310,13 @@ void COpenGLTexture::getOpenGLFormatAndParametersFromColorFormat(const asset::E_
 			colorformat = GL_RED;
 			type = GL_HALF_FLOAT;
 		}
+			
+			break;
+			case asset::EF_R8G8B8A8_SRGB:
+		{
+			colorformat = GL_RGBA;
+			type = GL_UNSIGNED_BYTE;
+		}
 			break;
 		case asset::EF_R16G16_SFLOAT:
 		{
