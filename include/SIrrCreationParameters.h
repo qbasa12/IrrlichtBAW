@@ -133,7 +133,8 @@ namespace irr
 		(which are usually in sRGB space) are correctly displayed. However vertex colors
 		and other explicitly set values have to be manually encoded in linear color space.
 		Default value: false. */
-		bool HandleSRGB;
+		//
+		//bool HandleSRGB;
 
 		//! Whether the main framebuffer uses an alpha channel.
 		/** In some situations it might be desireable to get a color
