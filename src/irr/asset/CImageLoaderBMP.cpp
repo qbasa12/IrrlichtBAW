@@ -26,6 +26,10 @@ CImageLoaderBMP::CImageLoaderBMP()
 	#ifdef _DEBUG
 	setDebugName("CImageLoaderBMP");
 	#endif
+				os::Printer::log(std::to_wstring(SBMPHeader.Colors), ELL_DEBUG);
+					os::Printer::log(std::to_wstring(SBMPHeader.Compression), ELL_DEBUG);
+
+
 }
 
 void CImageLoaderBMP::decompress8BitRLE(uint8_t*& bmpData, int32_t size, int32_t width, int32_t height, int32_t pitch) const

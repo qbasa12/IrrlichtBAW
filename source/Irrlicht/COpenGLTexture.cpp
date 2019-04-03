@@ -91,6 +91,7 @@ uint32_t COpenGLTexture::getOpenGLFormatBpp(const GLenum& colorformat)
             return 8;
             break;
         case GL_COMPRESSED_RED_RGTC1_EXT:
+
             return 4;
         case GL_COMPRESSED_RED_GREEN_RGTC2_EXT:
             return 8;
@@ -311,6 +312,12 @@ void COpenGLTexture::getOpenGLFormatAndParametersFromColorFormat(const asset::E_
 			type = GL_HALF_FLOAT;
 		}
 			break;
+		case asset::EF_R8G8B8_SRGB:
+		{
+			colorformat = GL_RGB;
+			type = GL_UNSIGNED_BYTE;
+		}
+		break;
 		case asset::EF_R16G16_SFLOAT:
 		{
 			colorformat = GL_RG;
@@ -340,6 +347,12 @@ void COpenGLTexture::getOpenGLFormatAndParametersFromColorFormat(const asset::E_
 			colorformat = GL_RG;
 			type = GL_FLOAT;
 		}
+			case asset::EF_R8G8B8A8_SRGB:
+		{
+			colorformat = GL_RGBA;
+			type = GL_UNSIGNED_BYTE;
+		}
+		break;
 			break;
 		case asset::EF_R32G32B32A32_SFLOAT:
 		{

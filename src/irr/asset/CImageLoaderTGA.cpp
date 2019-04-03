@@ -139,9 +139,12 @@ asset::IAsset* CImageLoaderTGA::loadAsset(io::IReadFile* _file, const asset::IAs
 	if (	header.ImageType == 1 || // Uncompressed, color-mapped images.
 			header.ImageType == 2 || // Uncompressed, RGB images
 			header.ImageType == 3 // Uncompressed, black and white images
+	    	os::Printer::log(std::to_wstringhe(header.ImageType), ELL_DEBUG);
+
+	    
 		)
 	{
-		const int32_t imageSize = header.ImageHeight * header.ImageWidth * header.PixelDepth/8;
+		const int32_t imageSize = header.ImageHeight * header.ImageWidth *header.PixelDepth/8;
 		data = new uint8_t[imageSize];
 	  	_file->read(data, imageSize);
 	}
@@ -165,6 +168,7 @@ asset::IAsset* CImageLoaderTGA::loadAsset(io::IReadFile* _file, const asset::IAs
 
 	uint32_t nullOffset[3] = {0,0,0};
 	uint32_t imageSize[3] = {header.ImageWidth,header.ImageHeight,1};
+	os::Printer::log(std::to_wstringhe(header.PixelDepth), ELL_DEBUG);
 
 	switch(header.PixelDepth)
 	{

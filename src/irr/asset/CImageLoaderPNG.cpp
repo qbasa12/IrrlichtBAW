@@ -3,6 +3,9 @@
 // For conditions of distribution and use, see copyright notice in irrlicht.h
 
 #include "CImageLoaderPNG.h"
+#include <iostream>   
+#include <string>  
+#include <string.h> 
 
 #ifdef _IRR_COMPILE_WITH_PNG_LOADER_
 
@@ -18,6 +21,7 @@
 #include "irr/asset/CImageData.h"
 #include "CReadFile.h"
 #include "os.h"
+
 
 namespace irr
 {
@@ -182,17 +186,26 @@ asset::IAsset* CImageLoaderPng::loadAsset(io::IReadFile* _file, const asset::IAs
 		png_set_gray_to_rgb(png_ptr);
 
 	int intent;
-	const double screen_gamma = 2.2;
+	const double screen_gamma = 1;
 
 	if (png_get_sRGB(png_ptr, info_ptr, &intent))
 		png_set_gamma(png_ptr, screen_gamma, 0.45455);
 	else
 	{
 		double image_gamma;
-		if (png_get_gAMA(png_ptr, info_ptr, &image_gamma))
+
+		if (png_get_gAMA(png_ptr, info_ptr, &image_gamma)) {
+
+		
 			png_set_gamma(png_ptr, screen_gamma, image_gamma);
-		else
+		}
+
+		else {
+			
+			os::Printer::log(std::to_wstring(image_gamma), ELL_DEBUG);
+	
 			png_set_gamma(png_ptr, screen_gamma, 0.45455);
+		}
 	}
 
 	// Update the changes in between, as we need to get the new color type
@@ -218,9 +231,9 @@ asset::IAsset* CImageLoaderPng::loadAsset(io::IReadFile* _file, const asset::IAs
 	// Create the image structure to be filled by png data
 	uint32_t nullOffset[3] = {0,0,0};
 	if (ColorType==PNG_COLOR_TYPE_RGB_ALPHA)
-		image = new asset::CImageData(NULL, nullOffset, imageSize, 0, asset::EF_B8G8R8A8_UNORM);
+		image = new asset::CImageData(NULL, nullOffset, imageSize, 0, asset::EF_B8G8R8A8_SRGB);
 	else
-		image = new asset::CImageData(NULL, nullOffset, imageSize, 0, asset::EF_R8G8B8_UNORM);
+		image = new asset::CImageData(NULL, nullOffset, imageSize, 0, asset::EF_R8G8B8_SRGB);
 	if (!image)
 	{
 		os::Printer::log("LOAD PNG: Internal PNG create image struct failure\n", _file->getFileName().c_str(), ELL_ERROR);
@@ -240,9 +253,13 @@ asset::IAsset* CImageLoaderPng::loadAsset(io::IReadFile* _file, const asset::IAs
 
 	// Fill array of pointers to rows in image data
 	uint8_t* data = reinterpret_cast<uint8_t*>(image->getData());
+	;
 	for (uint32_t i=0; i<Height; ++i)
 	{
 		RowPointers[i]=data;
+		
+		os::Printer::log(std::to_wstring(*data), ELL_DEBUG);
+			
 		data += image->getPitchIncludingAlignment();
 	}
 
