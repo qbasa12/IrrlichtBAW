@@ -135,7 +135,7 @@ bool COpenGLDriver::initDriver(CIrrDeviceWin32* device)
 	clientSize.left = 0;
 	clientSize.right = Params.WindowSize.Width;
 	clientSize.bottom = Params.WindowSize.Height;
-
+	
 	DWORD style = WS_POPUP;
 	if (!Params.Fullscreen)
 		style = WS_SYSMENU | WS_BORDER | WS_CAPTION | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
@@ -295,7 +295,7 @@ bool COpenGLDriver::initDriver(CIrrDeviceWin32* device)
 			WGL_DOUBLE_BUFFER_ARB,Params.Doublebuffer ? 1 : 0,
 			WGL_STEREO_ARB,Params.Stereobuffer ? 1 : 0,
 			WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, Params.HandleSRGB ? 1:0,
+			WGL_FRAMEBUFFER_SRGB_CAPABLE_ARB, Params.HandleSRGB=true,
 //			WGL_DEPTH_FLOAT_EXT, 1,
 			0,0,0,0
 		};
@@ -528,6 +528,7 @@ COpenGLDriver::COpenGLDriver(const SIrrlichtCreationParameters& params,
 	runningInRenderDoc(false),  CurrentRenderMode(ERM_NONE), ResetRenderStates(true), ColorFormat(asset::EF_R8G8B8_UNORM),
 	Params(params), X11Device(device), DeviceType(EIDT_X11), AuxContexts(0)
 {
+	Params.HandleSRGB=true;
 	#ifdef _DEBUG
 	setDebugName("COpenGLDriver");
 	#endif
