@@ -14,9 +14,6 @@
 #include "irr/asset/CImageData.h"
 #include "irr/asset/ICPUTexture.h"
 
-#ifdef _DEBUG
-
-
 namespace irr
 {
 namespace asset
