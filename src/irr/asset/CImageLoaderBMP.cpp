@@ -202,42 +202,43 @@ asset::IAsset* CImageLoaderBMP::loadAsset(io::IReadFile* _file, const asset::IAs
 
 	_file->read(&header, sizeof(header));
 	
-	byte BitmapHeader[header.BitmapHeaderSize];
+	std::vector<uint8_t> BitmapHeader;
+	_file->read(&BitmapHeader,header.BitmapHeaderSize);
 	
-		_file->read(&BitmapHeader, sizeof(header.BitmapHeaderSize));
-	byte Extra[16];
+	uint8_t Extra[16];
 	int i = 0;
 	//extra is 4 dwords 
 	//icc is the icc size 
-		
-	#ifdef _DEBUG
-		os::Printer::log("Extra bits", ELL_DEBUG);
-	#endif
 
-	while(i<16){
-		byte Extra[i] =  BitmaphHeader[(header.BitmapHeaderSize+i)];
+#ifdef _DEBUG
+	os::Printer::log("Extra bits", ELL_DEBUG);
+#endif
+
+	while (i < 16) {
+		 Extra[i] = BitmapHeader[(header.BitmapHeaderSize + i)];
 		i++;
-			#ifdef _DEBUG
-				os::Printer::log(std::to_wstring( Extra[i]), ELL_DEBUG);
-			#endif
+#ifdef _DEBUG
+		os::Printer::log(std::to_wstring(Extra[i]), ELL_DEBUG);
+#endif
 	};
- 	byte ICC_size =  BitmaphHeader[(header.BitmapHeaderSize-2)];	
-	byte ICC[ICC_size];
-	i = 0;
+	uint8_t ICC_size = BitmapHeader.at((header.BitmapHeaderSize - 2));
 
-		while(i<ICC_size){
-			ICC[i] =  BitmaphHeader[(header.BitmapHeaderSize-(2+ICC_size-i))];
-			i++;
-		}
-	os::Printer::log(std::to_wstring( "ICC", ELL_DEBUG);
+
+	std::vector<uint8_t> ICC;
+		i = 0;
+
+	while (i < ICC_size) {
+		ICC.at(i) = BitmapHeader.at((header.BitmapHeaderSize - (2 + ICC_size - i)));
+		i++;
+	}
+	os::Printer::log("ICC", ELL_DEBUG);
 	i = 0;
-		while(i<ICC){
-			#ifdef _DEBUG
-				os::Printer::log(std::to_wstring( ICC[i]), ELL_DEBUG);
-				i++;
-			#endif
-		}
-			 
+	while (i < ICC_size) {
+#ifdef _DEBUG
+		os::Printer::log(std::to_wstring(ICC.at(i)), ELL_DEBUG);
+		i++;
+#endif
+	}	 
 	
 	int32_t pitch = 0;
 
